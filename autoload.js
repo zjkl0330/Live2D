@@ -20,7 +20,7 @@
     'https://cdn.jsdelivr.net/gh/zjkl0330/Live2D@master/furina-mini/'
   ];
   /* 与 index.html 的 VER 保持同步，用于资源缓存穿透 */
-  var MINI_VER = 'v20261104a';
+  var MINI_VER = 'v20261104b';
 
   var qs = new URLSearchParams(location.search);
   var MODE = (window.LIVE2D_MODE || qs.get('mode') || 'mini').toLowerCase();
