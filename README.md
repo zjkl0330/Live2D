@@ -6,7 +6,7 @@
 
 ## 刻律德菈（Cyrdra）预览
 
-第二个模型已上线：[**kelvdela.html**](https://827802685.github.io/Live2D/kelvdela.html)
+第二个模型已上线：[**kelvdela.html**](https://zjkl0330.github.io/Live2D/kelvdela.html)
 
 - 模型文件在 `model/cerydra/`（官方 Cubism 运行时加载，运行时体积约 1.6 MB，含 4096 贴图 / 26 层 / 28 drawable / 20 参数）
 - 编辑源文件（`.cmo3` + 分层 PSD）在 `model/cerydra/src/`

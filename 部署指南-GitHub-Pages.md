@@ -37,10 +37,10 @@
 
 | 用途 | 地址 |
 |---|---|
-| 看板娘演示页 | `https://827802685.github.io/Live2D/index.html` |
-| 一键接入脚本（推荐直接引这个） | `https://827802685.github.io/Live2D/autoload.js` |
-| 插件核心目录（dist） | `https://827802685.github.io/Live2D/dist/` |
-| 模型根路径（大文件） | `https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/827802685/Live2D/refs/heads/master/` |
+| 看板娘演示页 | `https://zjkl0330.github.io/Live2D/index.html` |
+| 一键接入脚本（推荐直接引这个） | `https://zjkl0330.github.io/Live2D/autoload.js` |
+| 插件核心目录（dist） | `https://zjkl0330.github.io/Live2D/dist/` |
+| 模型根路径（大文件） | `https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/zjkl0330/Live2D/refs/heads/master/` |
 
 > `dist` 走 GitHub Pages 同源以稳定加载插件小文件；模型大文件（约 91MB）走加速 DNS 避免传输过慢。
 
@@ -91,7 +91,7 @@ git push -u origin main
 
 ## 第 4 步：验证
 
-浏览器打开 `https://<你的用户名>.github.io/<仓库名>/index.html`（本集成包当前线上为 `https://827802685.github.io/Live2D/index.html`）
+浏览器打开 `https://<你的用户名>.github.io/<仓库名>/index.html`（本集成包当前线上为 `https://zjkl0330.github.io/Live2D/index.html`）
 
 首次加载要下载约 94 MB 模型，左下角会先出现转圈 + 实时下载进度条（显示百分比和已下载/总大小）。进度走完后提示「模型加载完成，正在渲染」，随后芙宁娜登场。若模型正常出现，说明已可对外访问。
 
@@ -134,8 +134,8 @@ git push -u origin main
 1. 确认 `autoload.js` 顶部两个常量为绝对路径。本项目当前生效的配置（`dist` 走 GitHub Pages、模型大文件走加速 DNS）：
 
    ```js
-   const live2d_path = 'https://827802685.github.io/Live2D/dist/';
-   const model_root  = 'https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/827802685/Live2D/refs/heads/master/';
+   const live2d_path = 'https://zjkl0330.github.io/Live2D/dist/';
+   const model_root  = 'https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/zjkl0330/Live2D/refs/heads/master/';
    ```
 
    若你按上文方法部署到自己的用户名，则将两处仓库地址换成自己的：
@@ -156,7 +156,7 @@ git push -u origin main
    在这些文件末尾加一行：
 
    ```html
-   <script src="https://827802685.github.io/Live2D/autoload.js"></script>
+   <script src="https://zjkl0330.github.io/Live2D/autoload.js"></script>
    ```
 
    之后 `hexo clean && hexo g && hexo d`，进博客即可看到左下角芙宁娜。

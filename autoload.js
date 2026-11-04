@@ -7,9 +7,9 @@
  *  - cdnPath      : 模型仓库根路径，插件会在此请求 model_list.json 和 model/<名字>/index.json
  */
 // 固定为 GitHub Pages 绝对路径（同源，CORS 就绪）
-const live2d_path = 'https://827802685.github.io/Live2D/dist/';
+const live2d_path = 'https://zjkl0330.github.io/Live2D/dist/';
 // 模型大文件（91MB moc3 等）走自定义加速 DNS（镜像 raw.githubusercontent.com），避免 github.io 传输大文件过慢
-const model_root = 'https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/827802685/Live2D/refs/heads/master/';
+const model_root = 'https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/zjkl0330/Live2D/refs/heads/master/';
 
 // 封装异步资源加载
 function loadExternalResource(url, type) {
