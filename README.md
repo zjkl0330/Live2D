@@ -15,6 +15,19 @@
 
 > **关于垂直转向**：psd2live 是从单张立绘程序化绑骨的，实测 `ParamAngleY` ±30° 只会让整颗头上/下平移 1.4px、头部高度变化 4px——它没有俯仰，只有"漂浮"。所以页面把 `ParamAngleY` 恒置 0，改为在渲染前按"头顶固定、下巴随俯仰升降"重写头部各图层的顶点（`installPitchWarp()`），面板里的「头部俯仰幅度」可以 0–200% 调。
 
+## 甘雨（Ganyu）预览
+
+第三个模型：[**ganyu.html**](https://zjkl0330.github.io/Live2D/ganyu.html)
+
+- 模型在 `model/ganyu/`：22 层 / 26 drawable / 20 参数 / 4096 贴图，moc3 约 290 KB
+- 流水线：单张立绘 → 抠背景 → pad 1280 → **See-Through（魔搭）AI 拆层** → RGB 取回原图 + alpha 取 AI 蒙版 → 漏拆像素按邻接并回 → psd2live 建模
+- 与刻律德菈同款交互：视线跟随 + 俯仰合成 + 呼吸 + 眨眼 + 发丝物理 + 4 表情 + 点头/摇头，面板独立（`dist/ganyu-panel.js`，`ganyuConfigV4`）
+- 两处针对性修正（见 `Live2D制作流程.md`）：
+  1. `ParamAngleX/Y/Z` 与 `ParamBodyAngle*` 被待机动作曲线反复写入，会把 `drive()` 的结果冲掉 → 从 `idle.motion3.json` 里删掉这 6 条曲线；
+  2. psd2live 模型在 `coreModel.update()` 之后会 `loadParameters()` 还原参数快照，导致每帧写入失效 → 页面里把 `saveParameters` 置空。
+- 已知短板：源图仅 740×1440，脸部约 110px，拆层后眉/眼/嘴图层只有几十像素，表情变化幅度偏小；换 ≥1500px 的原图重跑可显著改善。
+
+
 ---
 
 把一个 **95.5 MB** 的 Cubism `moc3` 模型压成能放进网站的 **2.28 MB**，
