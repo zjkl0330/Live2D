@@ -180,7 +180,12 @@
 (function () {
   'use strict';
 
-  var MODEL_URL = './model/ganyu/ganyu.model3.json';
+  /* GitHub Pages 直连国内只有 ~10KB/s，2.4MB 贴图要等 4 分钟；
+     走 raw 镜像先试，失败再回退本站同源 */
+  var MODEL_BASES = [
+    'https://raw-githubusercontent-com-gh.zjkl0330.dpdns.org/zjkl0330/Live2D/refs/heads/master/model/ganyu/',
+    './model/ganyu/'
+  ];
   var host = document.getElementById('live2d');
   var stage = document.getElementById('stage');
   var boot = document.getElementById('boot');
@@ -421,7 +426,14 @@
 
   /* ---------- 加载 ---------- */
   bootT.textContent = '连接模型';
-  PIXI.live2d.Live2DModel.from(MODEL_URL, { autoInteract: false })
+  function loadModel(i) {
+    return PIXI.live2d.Live2DModel.from(MODEL_BASES[i] + 'ganyu.model3.json', { autoInteract: false })
+      .catch(function (e) {
+        if (i + 1 < MODEL_BASES.length) { bootT.textContent = '切换线路'; return loadModel(i + 1); }
+        throw e;
+      });
+  }
+  loadModel(0)
     .then(function (m) {
       model = window.__model = m;
       im = m.internalModel;
