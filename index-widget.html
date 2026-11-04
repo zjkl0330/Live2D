@@ -47,14 +47,14 @@
 <body>
   <div class="card">
     <h1>原神 · 芙宁娜 看板娘</h1>
-    <p class="sub">Live2D Cubism 3 模型已接入，看左下角～（首次加载需下载约 100MB 模型，请稍候）</p>
+    <p class="sub">默认使用<b>自建渲染器</b>（2.4 MB，秒开），看右下角～</p>
     <ul>
-      <li>芙宁娜模型：<code>github.com/zjkl0330/Live2D @ model/furina</code></li>
-      <li>插件：<code>live2d-widget</code>（自托管 dist）</li>
-      <li>加载方式：<code>cdnPath</code> 模式读取 <code>model_list.json</code></li>
-      <li>点击模型有互动反馈，右下角按钮可切换工具</li>
+      <li>主模型：<code>furina-mini</code> 自写 WebGL 渲染器 + 量化网格，<b>2.4 MB</b></li>
+      <li>原版模型：<code>model/furina</code>（Cubism，95 MB）作为回退保留</li>
+      <li>切换回原版看板娘：<code>autoload.js?mode=widget</code>，或设 <code>window.LIVE2D_MODE='widget'</code></li>
+      <li>两种模式都支持点击互动；原版另有气泡对话与工具栏</li>
     </ul>
-    <div class="tip">若模型未出现：模型过大（moc3 91MB + 8K 贴图 35MB），跨域 CDN 无法直链，必须自托管。请确认后端能稳定提供这几百 MB 的传输。</div>
+    <div class="tip">自建版直连 GitHub Pages / jsDelivr，2.4 MB 首屏即可；原版需下载 95 MB moc3 + 贴图，首次加载请耐心等待。</div>
   </div>
 
   <!-- 关键：加载自定义加载脚本 -->

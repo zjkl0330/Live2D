@@ -42,6 +42,22 @@
 
 ---
 
+## 模型体系
+
+仓库里有四套模型，**`furina-mini` 是主模型**，其余为回退 / 对照：
+
+| 模型 | 目录 | 体积 | 谁在用 |
+|---|---|---|---|
+| **`furina-mini`（主模型）** | `furina-mini/` | 2.4 MB | 主站 `index.html`、`autoload.js` 默认、`embed.html` |
+| `cerydra` 刻律德菈 | `model/cerydra/` | 1.6 MB | `kelvdela.html` |
+| `furina` 原版 | `model/furina/` | 93.8 MB | 旧 PIXI 管线；`autoload.js?mode=widget` 时回退 |
+| `BCSZ1.1` 八重神子 | `model/BCSZ1.1/` | 21.6 MB | 同上，`model_list.json` 里的第二个可选模型 |
+
+`autoload.js` 默认就是主模型，切回原版看板娘用 `?mode=widget` 或
+`window.LIVE2D_MODE = 'widget'`（原版才有气泡对话、工具栏、换装）。
+
+---
+
 ## 用法
 
 ```html
@@ -235,13 +251,22 @@ vec2 p = aPos + aBlink * uBlink + aExpr * uExpr;
 
 ```
 furina-live2d/
-├── index.html              演示页（体积对比 + 表情控制条）
+├── index.html              主站演示页（体积对比 + 表情控制条，默认加载主模型）
 ├── embed.html              最小嵌入示例
 ├── expr.html               单帧核验页（#e=5 强制第 5 帧，#b=1 强制闭眼，#near=1 NEAREST 采样调试）
-├── dist/
+├── kelvdela.html           刻律德菈预览页（官方 Cubism 运行时）
+├── autoload.js             看板娘一行接入脚本（默认 furina-mini，?mode=widget 回退原版）
+├── furina-mini/            ★ 主模型：自建 WebGL 渲染器 + 量化网格，2.4 MB
 │   ├── furina-mini.js      渲染器，38 KB
 │   ├── furina-mesh.bin     量化网格 + 11 帧表情位移 + 不透明度覆盖，1.58 MB
-│   └── furina-atlas.webp   图集，666 KB
+│   ├── furina-atlas.webp   图集，666 KB
+│   └── furina-wand.webp    权杖贴图，20 KB
+├── dist/                   原版 PIXI 看板娘插件 + 刻律德菈面板
+├── model/
+│   ├── furina/             原版 Cubism 模型（95 MB moc3 + 8K 贴图 + 17 表情 + 4 动作）
+│   ├── cerydra/            刻律德菈模型（Cubism，1.6 MB）
+│   └── BCSZ1.1/            八重神子模型（回退用）
+├── model_list.json         原版 PIXI 管线的模型列表，仅 ?mode=widget 时读取
 └── README.md
 ```
 
