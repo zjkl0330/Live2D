@@ -160,6 +160,9 @@
     <div class="sep"></div>
     <button data-a="Nod">点头</button>
     <button data-a="Shake">摇头</button>
+    <button data-act="wave">挥手</button>
+    <button data-act="sway">摇摆</button>
+    <button data-act="turn">侧身</button>
   </div>
   <div class="row exp">
     <button data-e="" class="on">常态</button>
@@ -268,6 +271,35 @@
     Y_MID: 0.372   // 权重饱和高度（越过下巴即满权重）
   };
 
+  /* ---------- 手臂摆动（大幅度肢体动作） ----------
+     模型没有手臂参数（20 个参数里没有 ParamArmLA/RA），但右臂是独立 drawable
+     ArtMeshHandwearR，可以在顶点层绕肩关节旋转。每个顶点按"到肩的距离"取权重，
+     肩部 0 度、越往手越大，等于给单段骨骼做了线性蒙皮，肩缝不会撕开。 */
+  var arm = {
+    p: 0,              // -1 … +1，负号向外抬
+    gain: 0.85,        // 满幅弧度（约 49°）
+    pivot: [-0.018, 0.298],
+    reach: 0.235       // 权重饱和距离（肩到手的长度）
+  };
+  var ARM_ID = 'ArtMeshHandwearR';
+
+  /* 腰部侧弯：k 是斜率（tan 角度）。y0 腰线、y1 权重饱和高度 */
+  var shear = { k: 0, y0: 0.16, y1: 0.44 };
+
+  /* 大幅动作时间轴：目前只有右臂是独立 drawable，能做的是"抬臂挥手"；
+     其余肢体（左臂、双腿）都并在 Topwear/Legwear 里，拆不开。
+     后续动作按同一套 act 结构扩写即可。 */
+  var act = { on: false, t0: 0, dur: 3.0, name: '' };
+  /* 姿态：整身绕脚底倾斜（度）+ 重心横移（px）。刚体变换，不会撕裂网格 */
+  var pose = { lean: 0, dx: 0, roll: 0, sq: 1 };
+  var idleT = 0;
+  var pivotP = { x: 0, y: 0 };   // 脚底支点的世界坐标，fit 时更新
+  function playAct(name, dur) {
+    act.on = true; act.t0 = performance.now(); act.dur = dur || 3.0; act.name = name;
+    if (window.__actBtn) window.__actBtn(name);
+  }
+  window.__playAct = playAct;
+
   function installPitchWarp() {
     var cm = im.coreModel;
     var idx = [], i, k;
@@ -277,6 +309,8 @@
     }
     if (!idx.length) return;
     window.__pitch = pitch;   // 调试/外部调参用
+    window.__arm = arm;
+    var armIdx = cm.getDrawableIndex(ARM_ID);
 
     /* psd2live 模型在 coreModel.update() 之后会 loadParameters() 还原快照，
        导致 drive() 写的参数只作用于当帧、下一帧被抹掉。关掉快照保存即可
@@ -287,6 +321,22 @@
     cm.getDrawableDynamicFlagVertexPositionsDidChange = function () { return true; };
 
     var snap = {};      // 索引 -> 变形前的 y 副本
+    var snapArm = null; // 右臂：完整 xy 副本（旋转需要两个分量）
+    var snapAll = {};   // 全部 drawable 的原始 xy（腰部侧弯要动所有层）
+    var allIdx = [], cnt = cm.getDrawableCount();
+    for (i = 0; i < cnt; i++) allIdx.push(i);
+
+    /* 腰部侧弯：以腰线为铰链，越往上偏移越大。用 shear 而不是旋转，
+       腰线处位移为 0，所以上身与裙子之间不会出现断裂。 */
+    function shearX(y) {
+      if (!shear.k) return 0;
+      var t = (y - shear.y0) / (shear.y1 - shear.y0);
+      t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      t = t * t * (3 - 2 * t);
+      return shear.k * (y - shear.y0) * t;
+    }
+    window.__shear = shear;
+
     var dirty = true;   // 是否刚被 Core 重算过
     var baseUpdate = cm.update ? cm.update.bind(cm) : null;
     if (baseUpdate) cm.update = function () { drive(); baseUpdate(); dirty = true; };
@@ -297,11 +347,31 @@
       var n, j, m, v, src, arr;
       if (dirty) {                       // 只在 Core 重算后重新取基准，避免重复叠加
         dirty = false;
+        for (n = 0; n < allIdx.length; n++) {
+          v = cm.getDrawableVertexPositions(n);
+          arr = snapAll[n];
+          if (!arr || arr.length !== v.length) arr = snapAll[n] = new Float32Array(v.length);
+          arr.set(v);
+        }
         for (n = 0; n < idx.length; n++) {
           v = cm.getDrawableVertexPositions(idx[n]);
           arr = snap[idx[n]];
           if (!arr || arr.length !== (v.length >> 1)) arr = snap[idx[n]] = new Float32Array(v.length >> 1);
           for (j = 0, m = 0; j < v.length; j += 2, m++) arr[m] = v[j + 1];
+        }
+        if (armIdx >= 0) {
+          v = cm.getDrawableVertexPositions(armIdx);
+          if (!snapArm || snapArm.length !== v.length) snapArm = new Float32Array(v.length);
+          for (j = 0; j < v.length; j++) snapArm[j] = v[j];
+        }
+      }
+      /* 腰部侧弯：先统一把上身推过去，后面俯仰只改 y、手臂再绕肩转 */
+      if (shear.k) {
+        for (n = 0; n < allIdx.length; n++) {
+          v = cm.getDrawableVertexPositions(n);
+          src = snapAll[n];
+          if (!src) continue;
+          for (j = 0; j < v.length; j += 2) v[j] = src[j] + shearX(src[j + 1]);
         }
       }
       var amp = pitch.gain * pitch.p;
@@ -318,6 +388,21 @@
           var d = pitch.Y_TOP - y;
           if (d < 0) d = 0;
           v[j + 1] = y - lift * wt - amp * (d / pitch.Y_CHIN) * wt;
+        }
+      }
+      /* 右臂：绕肩旋转，权重随距肩距离平滑上升（肩不动、手满幅） */
+      if (armIdx >= 0 && snapArm && arm.p !== 0) {
+        var px = arm.pivot[0], py = arm.pivot[1], reach = arm.reach;
+        var pxs = px + shearX(py);          // 支点跟着侧弯一起走
+        v = cm.getDrawableVertexPositions(armIdx);
+        for (j = 0; j < v.length; j += 2) {
+          var ax = snapArm[j] + shearX(snapArm[j + 1]) - pxs, ay = snapArm[j + 1] - py;
+          var dist = Math.sqrt(ax * ax + ay * ay) / reach;
+          var w0 = dist < 1 ? dist * dist * (3 - 2 * dist) : 1;
+          var th = arm.p * arm.gain * w0;
+          var c0 = Math.cos(th), s0 = Math.sin(th);
+          v[j] = pxs + ax * c0 - ay * s0;
+          v[j + 1] = py + ax * s0 + ay * c0;
         }
       }
       return draw();
@@ -364,8 +449,10 @@
     if (holder) {
       var bx = state.follow ? bodyS.x : 0;
       var by = state.follow ? bodyS.y : 0;
-      holder.x = bx * cfg.bodyAngleX * 0.6;
-      holder.y = by * cfg.bodyAngleX * 0.3;
+      holder.position.set(pivotP.x + bx * cfg.bodyAngleX * 0.6 + pose.dx,
+                          pivotP.y + by * cfg.bodyAngleX * 0.3);
+      holder.rotation = pose.lean * Math.PI / 180;
+      holder.scale.x = pose.sq;
     }
 
     if (state.expr && EXPR_EYE[state.expr] !== undefined) {
@@ -384,6 +471,58 @@
       cm.setParameterValueById('ParamHairFront', 0);
       cm.setParameterValueById('ParamHairBack', 0);
     }
+
+    /* ---------- 大幅动作 ---------- */
+    if (act.on) {
+      /* 用绝对时间而不是累加 dt：低帧率下 dt 被 clamp，动作会被拖成慢动作 */
+      var u = (performance.now() - act.t0) / (act.dur * 1000);
+      if (u >= 1) {
+        act.on = false;
+      } else if (act.name === 'wave') {
+        /* 抬手（0.12）→ 摆四下（0.12–0.84）→ 收手（0.84–1） */
+        var up = u < 0.12 ? (u / 0.12) : (u > 0.84 ? Math.max(0, (1 - u) / 0.16) : 1);
+        up = up * up * (3 - 2 * up);                       // smoothstep，起落不生硬
+        var cyc = Math.sin((u - 0.12) * Math.PI * 2 * 4.0);
+        arm.p = -1.05 * up + 0.22 * cyc * up;              // 负值＝向外抬
+        shear.k = 0.09 * up;                               // 腰以上再往反侧送一点
+        pose.lean = -3.2 * up;                             // 整身向抬臂侧倾，脚不动
+        pose.roll = (2.6 + 1.4 * cyc) * up;                // 头跟着点一点
+        /* 动作期间直接覆盖，避免被上面的基础驱动写回 */
+        cm.setParameterValueById('ParamAngleZ', -fx * fy * cfg.angleZ * 0.4 + pose.roll);
+        cm.setParameterValueById('ParamAngleX', fx * cfg.angleX - 6 * up);
+      } else if (act.name === 'sway') {
+        /* 摇摆：重心左右来回两次，头反向摆，像跟着节拍晃 */
+        var e = Math.sin(u * Math.PI * 2 * 1.5);
+        var env = Math.sin(Math.PI * u);
+        env = env * env * (3 - 2 * env);
+        shear.k = 0.12 * e * env;
+        pose.lean = 8.5 * e * env;                         // 绕脚底的整身摆动
+        pose.roll = -5.0 * e * env;
+        cm.setParameterValueById('ParamAngleZ', -fx * fy * cfg.angleZ * 0.4 + pose.roll);
+        cm.setParameterValueById('ParamAngleX', fx * cfg.angleX - 9 * e * env);
+      } else if (act.name === 'turn') {
+        /* 侧身：上身侧移 + 整体横向压窄一点，头转向一侧 */
+        var env2 = u < 0.22 ? u / 0.22 : (u > 0.78 ? (1 - u) / 0.22 : 1);
+        env2 = env2 * env2 * (3 - 2 * env2);
+        shear.k = 0.17 * env2;
+        pose.lean = 5.5 * env2;
+        pose.roll = 3.5 * env2;
+        pose.sq = 1 - 0.055 * env2;
+        cm.setParameterValueById('ParamAngleZ', -fx * fy * cfg.angleZ * 0.4 + pose.roll);
+        cm.setParameterValueById('ParamAngleX', fx * cfg.angleX + 12 * env2);
+      }
+    }
+    if (!act.on) {
+      /* 归位：手臂与姿态用阻尼回去，不抢待机驱动 */
+      var back = 1 - Math.pow(0.006, dt);
+      arm.p += (0 - arm.p) * back;
+      pose.roll += (0 - pose.roll) * back;
+      pose.lean += (0 - pose.lean) * back;
+      pose.sq += (1 - pose.sq) * back;
+      /* 待机微摆：身体一直有很轻的左右重心转移，静止时不至于像张纸 */
+      idleT += dt;
+      shear.k += (0.014 * Math.sin(idleT * 1.1) - shear.k) * Math.min(1, dt * 2.5);
+    }
   }
 
   /* ---------- 布局 ---------- */
@@ -398,7 +537,13 @@
     baseScale = Math.min(w / 760, h / 1280 * 0.96);
     model.scale.set(baseScale);
     /* 立绘裁切后主体略偏画布右侧，视觉上回正一点 */
-    model.position.set(w / 2 - 34, h * 0.5 + baseY - 6);
+    var cx = w / 2 - 34, cy = h * 0.5 + baseY - 6;
+    /* 把 holder 的原点放到脚底（模型坐标 y≈-0.50，x≈-0.02）：
+       之后 holder.rotation 就是"绕脚底倾斜"，脚不会跟着转走 */
+    pivotP.x = cx - 0.02 * baseScale;
+    pivotP.y = cy + 0.50 * baseScale;
+    holder.position.set(pivotP.x, pivotP.y);
+    model.position.set(cx - pivotP.x, cy - pivotP.y);
   }
   window.addEventListener('resize', fit);
 
@@ -481,6 +626,13 @@
         model.motion(a, 0, 3);
         b.classList.add('on');
         setTimeout(function () { b.classList.remove('on'); }, 1200);
+        return;
+      }
+      if (b.dataset.act) {                          // 大幅肢体动作
+        if (!model) return;
+        playAct(b.dataset.act);
+        b.classList.add('on');
+        setTimeout(function () { b.classList.remove('on'); }, 3000);
         return;
       }
       if (!k) return;

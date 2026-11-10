@@ -26,6 +26,12 @@
   1. `ParamAngleX/Y/Z` 与 `ParamBodyAngle*` 被待机动作曲线反复写入，会把 `drive()` 的结果冲掉 → 从 `idle.motion3.json` 里删掉这 6 条曲线；
   2. psd2live 模型在 `coreModel.update()` 之后会 `loadParameters()` 还原参数快照，导致每帧写入失效 → 页面里把 `saveParameters` 置空。
 - 已知短板：源图仅 740×1440，脸部约 110px，拆层后眉/眼/嘴图层只有几十像素，表情变化幅度偏小；换 ≥1500px 的原图重跑可显著改善。
+- **大幅度动作（挥手 / 摇摆 / 侧身）**：这个模型没有手臂参数，只有 `ArtMeshHandwearR`（右臂+袖）是独立层，所以动作分两层做——
+  - **腰部侧弯**：以腰线 `y≈0.16` 为铰链，按高度用 smoothstep 权重把所有 drawable 的 x 做 shear，腰线位移为 0，因此上身倾斜不会撕裂裙子；
+  - **整身摆动**：`holder` 原点放到脚底（模型坐标 `y≈-0.50`），`rotation` 即绕脚底倾斜，脚不跟着转走；
+  - **右臂**：`ArtMeshHandwearR` 顶点按「到肩距离」加权绕肩旋转，肩部 0°、手部满幅，等于给单段骨骼做线性蒙皮。
+  - 三个动作都在 `drive()` 里用**绝对时间**推进（`performance.now() - t0`），低帧率下不会被 dt clamp 拖成慢动作。
+  - 左臂、双腿分别并进 `Topwear` / `Legwear`，拆不开，所以做不了真正的双臂动作或抬腿——这需要回 Cubism Editor 重新拆层绑骨。
 
 
 ---
