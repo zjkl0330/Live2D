@@ -108,6 +108,10 @@
     /* 给右下角参数面板留位，避免遮住模型 */
     .wrap{padding-right:clamp(240px,21vw,300px)}
   }
+  @media (max-width:1099px){
+    /* 小屏没有右侧留白，参数面板改到按钮条上方，否则会压住"挥手/摇摆/侧身" */
+    #ganyu-panel{bottom:104px !important}
+  }
   @media (max-width:900px){
     .wrap{gap:0}
     .copy{display:none}
