@@ -92,8 +92,13 @@
     '             * smoothstep(0.55, 0.85, (uCenter.x - aPos.x) / uHalf.x);',
     '  p.y += bph * 0.009 * armW;',
     '  p.x -= bph * 0.005 * armW;',
+    // 手臂独立钟摆：低频双频叠加，让手臂在待机时也有轻微自然摆动
+    // （原先只靠 uOff 的身体跟随带动手臂，关掉跟随换算完全静止）
+    '  float armSwing = sin(uTime * 1.15) * 0.007 + sin(uTime * 0.43 + 1.1) * 0.004;',
+    '  p.x += armSwing * armW;',
+    '  p.y += abs(armSwing) * 0.5 * armW;',
     // 鼠标跟随
-    '  p += uOff * (0.35 + 0.65 * w);',
+    '  p += uOff * (0.06 + 0.94 * w);',
     '  gl_Position = vec4(p, 0.0, 1.0);',
     '}'
   ].join('\n');
@@ -154,7 +159,7 @@
     '  vec2 d = vec2(p.x, p.y - (uNeck.x - uCenter.y) * uScale);',
     '  p = vec2(d.x * c - d.y * s, (uNeck.x - uCenter.y) * uScale + d.x * s + d.y * c);',
     // 鼠标跟随
-    '  p += uOff * (0.35 + 0.65 * w);',
+    '  p += uOff * (0.06 + 0.94 * w);',
     '  gl_Position = vec4(p, 0.0, 1.0);',
     '}'
   ].join('\n');
