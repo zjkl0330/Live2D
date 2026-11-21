@@ -19,6 +19,8 @@
     'attribute vec2 aExpr;',
     // 头部权重由 CPU 端按网格连通性烘好（见 buildHeadW），不再用 aPos.y 现场算
     'attribute float aW;',
+    // 手臂权重（CPU 端按部件归属烘好：整块手臂取同一值，内部零梯度，不会被剪开）
+    'attribute float aArm;',
     'uniform float uTime, uTilt, uBreath, uScale, uAspect, uBlink, uExpr, uAMul, uAhoA, uBody, uHip;',
     'uniform vec2 uCenter, uNeck, uOff, uSway, uSkirt, uSkirtAmp, uHalf, uAhoP, uGaze;',
     'uniform vec4 uAho, uEye;',
@@ -63,9 +65,9 @@
     '  float ew = smoothstep(uEye.x - 0.06, uEye.x + 0.07, aPos.x) * smoothstep(uEye.z + 0.06, uEye.z - 0.07, aPos.x)',
     '           * smoothstep(uEye.y - 0.035, uEye.y + 0.055, aPos.y) * smoothstep(uEye.w + 0.035, uEye.w - 0.055, aPos.y);',
     '  p += uGaze * 0.013 * ew;',
-    // 头部绕「颈部上端」（uNeck.y，下巴高度）倾转：脖子本体权重为 0，
-    // 完全刚性不动，只有整颗头在原地歪，颈下皮肤不会被拽出折痕
-    '  float neckY = (uNeck.y - uCenter.y) * uScale;',
+    // 头部绕「颈根」（uNeck.x）倾转。脖子（颈根~下巴）整块 w=1，和头完全同步转，
+    // 所以下巴与脖子之间不会裂开；颈根以下在立领后面收成 0，躯干不受牵扯。
+    '  float neckY = (uNeck.x - uCenter.y) * uScale;',
     '  float a = uTilt * w;',
     '  float s = sin(a), c = cos(a);',
     '  vec2 d = vec2(p.x, p.y - neckY);',
@@ -89,17 +91,17 @@
     '  p.y += sin(ph - aPos.y * 7.0 + 2.2) * uSkirtAmp.y * sk;',
     // 裙尾随呼吸轻摆：吸气（bph>0）向观众左侧偏，呼气回来
     '  p.x += bph * 0.012 * sk;',
-    // 右臂（画面左侧）随呼吸轻抬：胸口扩张 → 肩带手臂微微上浮
-    '  float armW = (1.0 - smoothstep(uNeck.x - 0.02, uNeck.y, aPos.y))',
-    '             * smoothstep(uHip - 0.05, uHip + 0.06, aPos.y)',
-    '             * smoothstep(0.55, 0.85, (uCenter.x - aPos.x) / uHalf.x);',
-    '  p.y += bph * 0.009 * armW;',
-    '  p.x -= bph * 0.005 * armW;',
-    // 手臂独立钟摆：低频双频叠加，让手臂在待机时也有轻微自然摆动
-    // （原先只靠 uOff 的身体跟随带动手臂，关掉跟随换算完全静止）
-    '  float armSwing = sin(uTime * 1.15) * 0.007 + sin(uTime * 0.43 + 1.1) * 0.004;',
-    '  p.x += armSwing * armW;',
-    '  p.y += abs(armSwing) * 0.5 * armW;',
+    // 手臂：待机摆动 = 整只手臂绕肩关节的小角度旋转（不是整体平移）。
+    // 旋转轴在肩上，肩点位移为 0 → 手臂和躯干不会拉开；越到手位移越大，像钟摆。
+    '  float armW = aArm;',
+    '  float armAng = sin(uTime * 1.15) * 0.026 + sin(uTime * 0.47 + 1.1) * 0.014;',
+    '  float armSgn = aPos.x > uCenter.x ? 1.0 : -1.0;',
+    '  vec2 armPiv = vec2((armSgn * 0.165 - uCenter.x) * uAspect, (uNeck.x + 0.055 - uCenter.y) * uScale);',
+    '  vec2 armD = p - armPiv;',
+    '  float armAa = armAng * armW;',
+    '  p = armPiv + vec2(armD.x * cos(armAa) - armD.y * sin(armAa),',
+    '                    armD.x * sin(armAa) + armD.y * cos(armAa));',
+    '  p.y += bph * 0.004 * armW;',
     // 鼠标跟随：身体只吃 6%（避免脖子以下被整体拖着走），头 100%
     '  p += uOff * (0.06 + 0.94 * w);',
     '  gl_Position = vec4(p, 0.0, 1.0);',
@@ -132,6 +134,8 @@
     'attribute vec2 aBlink;',
     'attribute vec2 aExpr;',
     'attribute float aW;',
+    // 手臂权重（CPU 端按部件归属烘好：整块手臂取同一值，内部零梯度，不会被剪开）
+    'attribute float aArm;',
     'uniform float uTilt, uBreath, uScale, uAspect, uBlink, uExpr, uAMul, uBody, uHip;',
     'uniform vec2 uCenter, uNeck, uOff, uGaze;',
     'uniform vec4 uEye;',
@@ -447,6 +451,7 @@
     gl.bindAttribLocation(pr, 3, 'aBlink');
     gl.bindAttribLocation(pr, 4, 'aExpr');
     gl.bindAttribLocation(pr, 5, 'aW');
+    gl.bindAttribLocation(pr, 6, 'aArm');
     gl.linkProgram(pr);
     if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) {
       throw new Error('link: ' + gl.getProgramInfoLog(pr));
@@ -459,6 +464,7 @@
     this.aBlink = gl.getAttribLocation(pr, 'aBlink');
     this.aExpr = gl.getAttribLocation(pr, 'aExpr');
     this.aW = gl.getAttribLocation(pr, 'aW');
+    this.aArm = gl.getAttribLocation(pr, 'aArm');
     gl.enableVertexAttribArray(this.aPos);
     gl.enableVertexAttribArray(this.aUv);
     gl.enableVertexAttribArray(this.aA);
@@ -473,27 +479,27 @@
     /* 精简版 program 懒编译：applyPerf 首次降到 L≥3 才创建，正常机器零开销 */
     this._litePr = null;
 
-    /* ---------- 1. 掩码几何：每个掩码体只烘焙一次，交错 [x,y,u,v,a,w] ----------
-       w 列此时先填 0，等 buildHeadW() 算出权重再回填重传。 */
+    /* ---------- 1. 掩码几何：每个掩码体只烘焙一次，交错 [x,y,u,v,a,w,arm] ----------
+       w / arm 两列此时先填 0，等 buildHeadW() 算好再回填重传。 */
     var pos = d.pos, uv = d.uv, idx = d.idx, KQ = 32767 / 1.5;
     var mStart = new Int32Array(d.N), mCount = new Int32Array(d.N), mTotal = 0;
-    var i, k, io2, c, vi, q = 0, g6;
+    var i, k, io2, c, vi, q = 0, g7;
     for (i = 0; i < d.N; i++) {
       if (!d.maskTarget[i] || d.ic[i] === 0) continue;
       mStart[i] = mTotal; mCount[i] = d.ic[i]; mTotal += d.ic[i];
     }
-    var gV = new Float32Array(mTotal * 6);
+    var gV = new Float32Array(mTotal * 7);
     for (i = 0; i < d.N; i++) {
       if (!d.maskTarget[i] || d.ic[i] === 0) continue;
       io2 = d.iOff[i]; c = d.ic[i];
       for (k = 0; k < c; k++) {
         vi = (idx[io2 + k] + d.vOff[i]) * 2;
-        g6 = q * 6;
-        gV[g6] = pos[vi] / KQ;
-        gV[g6 + 1] = pos[vi + 1] / KQ;
-        gV[g6 + 2] = uv[vi] / 65535;
-        gV[g6 + 3] = uv[vi + 1] / 65535;
-        gV[g6 + 4] = 1;
+        g7 = q * 7;
+        gV[g7] = pos[vi] / KQ;
+        gV[g7 + 1] = pos[vi + 1] / KQ;
+        gV[g7 + 2] = uv[vi] / 65535;
+        gV[g7 + 3] = uv[vi + 1] / 65535;
+        gV[g7 + 4] = 1;
         q++;
       }
     }
@@ -511,7 +517,7 @@
       if (d.ic[i] === 0 || !gV || mCount[i] === 0) continue;
       var bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
       for (k = 0; k < mCount[i]; k++) {
-        var qi = (mStart[i] + k) * 6;
+        var qi = (mStart[i] + k) * 7;
         var qx = gV[qi], qy = gV[qi + 1];
         if (qx < bx0) bx0 = qx; if (qx > bx1) bx1 = qx;
         if (qy < by0) by0 = qy; if (qy > by1) by1 = qy;
@@ -817,10 +823,11 @@
       }
     }
 
-    var bV = new Float32Array(total * 6);
+    var bV = new Float32Array(total * 7);
     var fV = hasAnim ? new Float32Array(K * DVT * 2) : null;
     var itemStart = [], itemCount = [], itemId = [];
     var VW = this.vW;                  // 头部权重（buildHeadW 烘好；未就绪时填 0，随后重建）
+    var VA = this.vArm;                // 手臂权重（同上）
 
     for (n = 0; n < runs.length; n++) {
       var run = runs[n];
@@ -836,14 +843,15 @@
         for (k = 0; k < c; k++) {
           var lv = idx[io2 + k];
           var gvi = lv + d.vOff[i];
-          var vi = gvi * 2, b6 = p * 6;
+          var vi = gvi * 2, b7 = p * 7;
           var bx = pos[vi] / KQ, by = pos[vi + 1] / KQ;
-          bV[b6] = bx;
-          bV[b6 + 1] = by;
-          bV[b6 + 2] = uv[vi] / 65535;
-          bV[b6 + 3] = uv[vi + 1] / 65535;
-          bV[b6 + 4] = av;
-          bV[b6 + 5] = VW ? VW[gvi] : 0;
+          bV[b7] = bx;
+          bV[b7 + 1] = by;
+          bV[b7 + 2] = uv[vi] / 65535;
+          bV[b7 + 3] = uv[vi + 1] / 65535;
+          bV[b7 + 4] = av;
+          bV[b7 + 5] = VW ? VW[gvi] : 0;
+          bV[b7 + 6] = VA ? VA[gvi] : 0;
           if (run.dyn && hasAnim) {
             var q = dq + k;
             var wE = exprWt[i];
@@ -924,7 +932,7 @@
          可见几何：只按掩码盒裁的话，眨眼/表情位移把几何挪出掩码盒时就会被切掉 */
       var vb0 = 1e9, vb1 = 1e9, vb2 = -1e9, vb3 = -1e9;
       for (j = 0; j < runs[n].vn; j++) {
-        var vo = (runs[n].v0 + j) * 6;
+        var vo = (runs[n].v0 + j) * 7;
         var vx = bV[vo], vy = bV[vo + 1];
         if (vx < vb0) vb0 = vx; if (vx > vb2) vb2 = vx;
         if (vy < vb1) vb1 = vy; if (vy > vb3) vb3 = vy;
@@ -938,7 +946,7 @@
     /* 5. 可见几何的边界框（取景用） */
     var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (n = 0; n < total; n++) {
-      var x = bV[n * 6], y = bV[n * 6 + 1];
+      var x = bV[n * 7], y = bV[n * 7 + 1];
       if (x < x0) x0 = x; if (x > x1) x1 = x;
       if (y < y0) y0 = y; if (y > y1) y1 = y;
     }
@@ -948,33 +956,65 @@
   };
 
   /* 头部权重：取代「按 y 一刀切」的 smoothstep(neck, neckTop, y)。
-     旧做法只看高度，一根从头顶垂到胸口的发丝上下权重差满 1，落差全挤在颈线
-     那 0.08bh 的窄带里，鼠标一横移就被拧成麻花（发丝抽细、领口被撕开）。
-     现在分两类处理：
-       · 脖子/锁骨/立领这类「整块都在下巴以下」的小部件 —— 权重直接钉 0，
-         跟着身体刚性待着，鼠标左右移动时一点都不动；
-       · 头发、帽子这类「跨到头顶」的长部件 —— 以头顶为源沿网格边扩散，
-         权重顺着发丝自身走向铺开，整根一起转，只在下端缓慢交接，不会被切断。 */
+     旧做法把 0→1 的落差全挤在颈线那 0.08bh 窄带里，跨带的长发/衣领被拧成麻花。
+     现在：
+       · 颈根以上（脖子、下颚、脸、五官、帽子）w=1 —— 整根脖子跟头一起刚性转，
+         下巴与脖子之间不会出现裂缝；
+       · 颈根往下 0.10bh 的铰链带收成 0（这段藏在立领里），躯干/锁骨/衣领不动；
+       · 从颈下一路贯到头顶的长条（头发、披风）沿网格边把权重从发根扩散下来，
+         整根一起转，只在下端缓慢交接。 */
   Furina.prototype.buildHeadW = function () {
     var d = this.data, V = d.vTot, b = this.base, bb = this.bbox;
     var KQ = 32767 / 1.5, bh = bb.h;
     var w = new Float32Array(V), pin = new Uint8Array(V);
     var i, k, t, q0, q1, q2;
-    var lo = b.neckTop - 0.03 * bh, hi = b.neckTop + 0.03 * bh;
+    /* 铰链带：颈根往下 0.03bh 到颈根往上 0.05bh（大致覆盖整根脖子）。
+       只有「大跨度」的部件（头发）在这条带里做逐顶点渐变 —— 它们必须连续，
+       否则会一段段错开。其余部件一律整块取 0/1：
+         · 整块在颈下（躯干、锁骨、衣领、手臂、裙腿）→ 0，绝不跟头动；
+         · 整块在颈上（脸、五官、帽子）→ 1；
+         · 脖子这种「刚跨过颈根一点」的小件 → 1（跟头一起转，下巴处不会裂缝）。 */
+    var lo = b.neck - 0.03 * bh, hi = b.neck + 0.05 * bh;
 
-    /* 每个 drawable 归属：1=整块在头部（眼嘴眉、腮红…）全跟头；
-       0=整块在颈下（躯干、锁骨）或跨颈的短件（脖子皮肤、立领）整块不动；
-       2=从颈下一路贯到头上方的长条（头发、帽子、披风）走网格扩散。 */
+    /* 每个 drawable 的包围盒 + 归属：0=不跟头，1=整块跟头，2=逐顶点渐变 */
     var mode = new Uint8Array(d.N);
+    var pbx = new Float32Array(d.N), pby0 = new Float32Array(d.N), pby1 = new Float32Array(d.N);
+    /* 手臂权重：只认两侧手臂 / 手套 / 袖口这类小件（判据全用部件包围盒）。
+       裙摆、披风、大衣下摆是宽大图层，直接被尺寸条件挡掉；
+       前襟、裙前片跨中线，被「整块同侧」挡掉。 */
+    var partArm = new Float32Array(d.N), arm = new Float32Array(V);
     for (k = 0; k < d.N; k++) {
       if (!d.ic[k]) continue;
-      var vo0 = d.vOff[k], ymn = 1e9, ymx = -1e9;
+      var vo0 = d.vOff[k], ymn = 1e9, ymx = -1e9, xmn = 1e9, xmx = -1e9;
       for (var j = 0; j < d.vc[k]; j++) {
-        var yy = d.pos[(vo0 + j) * 2 + 1] / KQ;
+        var vv = (vo0 + j) * 2;
+        var yy = d.pos[vv + 1] / KQ, xx = d.pos[vv] / KQ;
         if (yy < ymn) ymn = yy; if (yy > ymx) ymx = yy;
+        if (xx < xmn) xmn = xx; if (xx > xmx) xmx = xx;
       }
-      mode[k] = (ymn >= lo) ? 1
-              : ((ymx >= hi + 0.12 * bh && ymx - ymn > 0.22 * bh) ? 2 : 0);
+      pbx[k] = (xmn + xmx) * 0.5; pby0[k] = ymn; pby1[k] = ymx;
+      var side = (xmx < -0.10 || xmn > 0.10);        // 整块在身体中线一侧
+      var span = ymx - ymn;
+      if (ymx < b.neck - 0.03 * bh) mode[k] = 0;                       // 整块在颈下
+      else if (ymn > b.neckTop) mode[k] = 1;                            // 整块在颈上
+      else if (span > 0.30 * bh && (side || ymx > b.neckTop + 0.10 * bh)) mode[k] = 2;  // 头发/披风：渐变
+      else if (ymn > b.neck - 0.05 * bh) mode[k] = 1;                   // 脖子这种小跨件
+      else mode[k] = 0;
+
+      /* ---- 手臂：两只手臂的所有图层（肩披大袖、袖口、手套、手指）都算。
+         整只手臂取同一个权重 1，摆动交给 shader 绕肩点旋转 ——
+         肩点处位移为 0，所以肩膀不会和躯干拉开；同一只手臂的各个图层同步转，
+         手腕/袖口/手套之间不会裂开（按部件做高度渐变时，手套摆而大袖不摆，
+         腕部会直接撕出一道口子）。 */
+      var acx2 = (xmn + xmx) * 0.5, aw2 = xmx - xmn;
+      if (Math.abs(acx2) > 0.13 && ymx <= b.neck + 0.16 * bh && span <= 0.42 * bh) {
+        if (ymx >= b.neck) {                       // 高位（肩披大袖）
+          if (aw2 <= 0.80 * bb.w && ymn >= b.neck - 0.26 * bh) partArm[k] = 1;
+        } else {                                    // 低位（袖口/手套/手指）
+          if (aw2 <= 0.22 * bb.w && ymn >= b.neck - 0.34 * bh) partArm[k] = 1;
+        }
+        if (partArm[k]) mode[k] = 0;                // 不跟头
+      }
     }
     /* 顶点 -> 所属 drawable（同一顶点可能被多个部件引用，取任一个即可） */
     var own = new Int32Array(V).fill(-1);
@@ -985,12 +1025,16 @@
 
     for (i = 0; i < V; i++) {
       var y = d.pos[i * 2 + 1] / KQ;
-      var mk = own[i] >= 0 ? mode[own[i]] : 0;
+      var ok_ = own[i] >= 0 ? own[i] : -1;
+      if (ok_ >= 0 && partArm[ok_] > 0) arm[i] = partArm[ok_];
+      var mk = ok_ >= 0 ? mode[ok_] : 0;
       if (mk === 1) { w[i] = 1; pin[i] = 1; }
       else if (mk === 0) { w[i] = 0; pin[i] = 2; }
-      else if (y >= hi) { w[i] = 1; pin[i] = 1; }
-      else if (y <= lo) { w[i] = 0; }   // 不钉：留给扩散从发根带下来
-      else { var s = (y - lo) / (hi - lo); w[i] = s * s * (3 - 2 * s); }
+      else {
+        if (y >= hi) { w[i] = 1; pin[i] = 1; }
+        else if (y <= lo) { w[i] = 0; }
+        else { var s2 = (y - lo) / (hi - lo); w[i] = s2 * s2 * (3 - 2 * s2); }
+      }
     }
 
     /* CSR 邻接（每个 drawable 内按三角形边连边） */
@@ -1031,18 +1075,22 @@
       w.set(tmp);
     }
     this.vW = w;
+
+    this.vArm = arm;
   };
 
   /* 权重回填到掩码几何缓冲（掩码必须和可见几何吃同一份权重，否则对不齐） */
   Furina.prototype.pushHeadW = function () {
-    var d = this.data, gV = this._gV, gl = this.gl, VW = this.vW;
+    var d = this.data, gV = this._gV, gl = this.gl, VW = this.vW, VA = this.vArm;
     if (!gV || !VW) return;
     var q = 0, i, k;
     for (i = 0; i < d.N; i++) {
       if (!d.maskTarget[i] || d.ic[i] === 0) continue;
       var io = d.iOff[i], vo = d.vOff[i];
       for (k = 0; k < d.ic[i]; k++) {
-        gV[q * 6 + 5] = VW[d.idx[io + k] + vo];
+        var gvi2 = d.idx[io + k] + vo;
+        gV[q * 7 + 5] = VW[gvi2];
+        gV[q * 7 + 6] = VA ? VA[gvi2] : 0;
         q++;
       }
     }
@@ -1286,6 +1334,7 @@
         gl.bindAttribLocation(lp, 3, 'aBlink');
         gl.bindAttribLocation(lp, 4, 'aExpr');
         gl.bindAttribLocation(lp, 5, 'aW');
+        gl.bindAttribLocation(lp, 6, 'aArm');
         gl.linkProgram(lp);
         if (!gl.getProgramParameter(lp, gl.LINK_STATUS)) throw new Error('lite link');
         var ul = {};
@@ -1336,7 +1385,7 @@
     gl.disableVertexAttribArray(this.aA);
     gl.enableVertexAttribArray(this.pu.aPos);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bv);
-    gl.vertexAttribPointer(this.pu.aPos, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(this.pu.aPos, 2, gl.FLOAT, false, 28, 0);
     for (var n = 0; n < this.itemId.length; n++) {
       var id = this.itemId[n];
       gl.uniform3f(this.pu.uColor, ((id % 32) + 0.5) / 32, (Math.floor(id / 32) % 32 + 0.5) / 32, 1);
@@ -1596,7 +1645,7 @@
     gl.uniform1f(u.uBlink, 0);
     gl.uniform1f(u.uExpr, 0);
 
-    var AP = this.aPos, AU = this.aUv, AA = this.aA, AW = this.aW, BUF = this.bv;
+    var AP = this.aPos, AU = this.aUv, AA = this.aA, AW = this.aW, AR = this.aArm, BUF = this.bv;
     var AB = this.aBlink, AE = this.aExpr, DYN = this.dynTotal, EF = this.exprFrame;
     var FV = this.fv, HAS = !!FV;
     var rc = this.runV0.length;
@@ -1606,16 +1655,18 @@
        drawArrays 的 first 会叠加到所有属性上，所以这里统一用 first=0，
        把 run 的起始顶点折进指针偏移里（v0*20）。否则帧属性会错位读到空白区。 */
     function bindMain(dyn0, v0) {
-      var o24 = v0 * 24;
+      var o28 = v0 * 28;
       gl.enableVertexAttribArray(AP);
       gl.enableVertexAttribArray(AU);
       gl.enableVertexAttribArray(AA);
       gl.enableVertexAttribArray(AW);
+      gl.enableVertexAttribArray(AR);
       gl.bindBuffer(gl.ARRAY_BUFFER, BUF);
-      gl.vertexAttribPointer(AP, 2, gl.FLOAT, false, 24, o24);
-      gl.vertexAttribPointer(AU, 2, gl.FLOAT, false, 24, o24 + 8);
-      gl.vertexAttribPointer(AA, 1, gl.FLOAT, false, 24, o24 + 16);
-      gl.vertexAttribPointer(AW, 1, gl.FLOAT, false, 24, o24 + 20);
+      gl.vertexAttribPointer(AP, 2, gl.FLOAT, false, 28, o28);
+      gl.vertexAttribPointer(AU, 2, gl.FLOAT, false, 28, o28 + 8);
+      gl.vertexAttribPointer(AA, 1, gl.FLOAT, false, 28, o28 + 16);
+      gl.vertexAttribPointer(AW, 1, gl.FLOAT, false, 28, o28 + 20);
+      gl.vertexAttribPointer(AR, 1, gl.FLOAT, false, 28, o28 + 24);
       if (HAS && dyn0 >= 0) {
         gl.enableVertexAttribArray(AB);
         gl.enableVertexAttribArray(AE);
@@ -1661,7 +1712,7 @@
          就按 0 与 1 两端各算一遍取并集——包围盒只会偏大，不会把掩码裁掉 */
       var w = wv;
       var a2 = tiltV * w, ca = Math.cos(a2), sa = Math.sin(a2);
-      var neckY = (b.neckTop - b.cy) * SC;   // 与 shader 一致：轴在颈部上端
+      var neckY = (b.neck - b.cy) * SC;      // 与 shader 一致：轴在颈根
       dx = px; dy = py - neckY;
       px = dx * ca - dy * sa; py = neckY + dx * sa + dy * ca;
       px += sg * swayVX * (0.35 + 0.65 * w) * (0.5 + 0.5 * Math.abs(px));
@@ -1727,10 +1778,12 @@
       gl.disableVertexAttribArray(AA);
       gl.vertexAttrib1f(AA, 1);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.gv);
-      gl.vertexAttribPointer(AP, 2, gl.FLOAT, false, 24, 0);
-      gl.vertexAttribPointer(AU, 2, gl.FLOAT, false, 24, 8);
+      gl.vertexAttribPointer(AP, 2, gl.FLOAT, false, 28, 0);
+      gl.vertexAttribPointer(AU, 2, gl.FLOAT, false, 28, 8);
       gl.enableVertexAttribArray(AW);
-      gl.vertexAttribPointer(AW, 1, gl.FLOAT, false, 24, 20);
+      gl.vertexAttribPointer(AW, 1, gl.FLOAT, false, 28, 20);
+      gl.enableVertexAttribArray(AR);
+      gl.vertexAttribPointer(AR, 1, gl.FLOAT, false, 28, 24);
       if (this.o.debugMask) {
         gl.colorMask(true, true, true, true);
         for (r = 0; r < this.maskRef.length / 2; r++) {
